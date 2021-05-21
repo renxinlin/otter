@@ -28,7 +28,7 @@ public class MainStemEventData extends PipelineEventData {
     public enum Status {
         /** 已追上 */
         OVERTAKE,
-        /** 追赶中 */
+        /** 追赶中  也就是页面的定位中状态*/
         TAKEING;
 
         public boolean isOverTake() {

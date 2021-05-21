@@ -88,12 +88,22 @@ public class DatabaseExtractor extends AbstractExtractor<DbBatch> implements Ini
     private int                 poolSize           = DEFAULT_POOL_SIZE;
     private ExecutorService     executor;
 
+
+    /**
+     *
+     *
+     *
+     *
+     * @param dbBatch
+     * @throws ExtractException
+     */
     @Override
     public void extract(DbBatch dbBatch) throws ExtractException {
         Assert.notNull(dbBatch);
         Assert.notNull(dbBatch.getRowBatch());
         // 读取配置
         Pipeline pipeline = getPipeline(dbBatch.getRowBatch().getIdentity().getPipelineId());
+        //
         boolean mustDb = pipeline.getParameters().getSyncConsistency().isMedia();
         boolean isRow = pipeline.getParameters().getSyncMode().isRow();// 如果是行记录是必须进行数据库反查
         // 读取一次配置
@@ -132,6 +142,7 @@ public class DatabaseExtractor extends AbstractExtractor<DbBatch> implements Ini
             }
 
             if (flag && (eventData.getEventType().isInsert() || eventData.getEventType().isUpdate())) {// 判断是否需要反查
+                // renxl item传下去 这样 反查的数据放到eventData里面
                 Future future = completionService.submit(new DatabaseExtractWorker(pipeline, item), null); // 提交进行并行查询
                 if (future.isDone()) {
                     // 立即判断一次，因为使用了CallerRun可能当场跑出结果，针对有异常时快速响应，而不是等跑完所有的才抛异常

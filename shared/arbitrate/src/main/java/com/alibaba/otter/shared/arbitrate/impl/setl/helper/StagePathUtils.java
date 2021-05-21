@@ -59,7 +59,7 @@ public class StagePathUtils extends ManagePathUtils {
     }
 
     /**
-     * 返回对应的remedy root path
+     * 返回对应的remedy root path`
      */
     public static String getRemedyRoot(Long pipelineId) {
         // 根据channelId , pipelineId构造path

@@ -27,7 +27,7 @@ import com.alibaba.otter.shared.communication.core.CommunicationEndpoint;
 import com.alibaba.otter.shared.communication.core.impl.AbstractCommunicationEndpoint;
 
 /**
- * 基于dubbo的endpoint实现,仅仅使用了dubb的rpc工具
+ * 基于dubbo的endpoint实现,仅仅使用了dubbo的rpc工具
  * 
  * @author jianghang 2011-11-29 上午11:08:29
  * @version 4.0.0
@@ -41,7 +41,7 @@ public class DubboCommunicationEndpoint extends AbstractCommunicationEndpoint {
     private Exporter<CommunicationEndpoint> exporter          = null;
     private int                             port              = 2088;
 
-    public DubboCommunicationEndpoint(){
+    public  DubboCommunicationEndpoint(){
 
     }
 

@@ -16,18 +16,6 @@
 
 package com.alibaba.otter.node.etl.select;
 
-import java.util.Date;
-import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
-
-import org.slf4j.MDC;
-import org.springframework.util.CollectionUtils;
-
 import com.alibaba.otter.canal.common.CanalException;
 import com.alibaba.otter.node.common.statistics.StatisticsClientService;
 import com.alibaba.otter.node.etl.OtterConstants;
@@ -49,32 +37,38 @@ import com.alibaba.otter.shared.etl.model.DbBatch;
 import com.alibaba.otter.shared.etl.model.EventData;
 import com.alibaba.otter.shared.etl.model.Identity;
 import com.alibaba.otter.shared.etl.model.RowBatch;
+import org.slf4j.MDC;
+import org.springframework.util.CollectionUtils;
+
+import java.util.Date;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 
 /**
- *
- *
- *
- *
- *
  * otter通过select模块串行获取canal的批数据，注意是串行获取，每批次获取到的数据，就会有一个全局标识，otter里称之为processId.
  * select模块获取到数据后，将其传递给后续的ETL模型. 这里E和T模块会是一个并行处理
  * 将数据最后传递到Load时，会根据每批数据对应的processId，按照顺序进行串行加载。 ( 比如有一个processId=2的数据先到了Load模块，但会阻塞等processId=1的数据Load完成后才会被执行)
  * 简单一点说，Select/Load模块会是一个串行机制来保证binlog处理的顺序性，Extract/Transform会是一个并行，加速传输效率.
- *
- *
- *
- *
- *
- *
+ * <p>
+ * <p>
+ * <p>
+ * <p>
+ * <p>
+ * <p>
  * select流处理模式的实现版本
- * 
+ *
  * <pre>
  * 调度模型：
- * 1. 正常运行调度流程 
+ * 1. 正常运行调度流程
  * 假如并行度为3
  * ----------------------------------------------------------->时间轴
  * | ProcessSelect
- * --> 1 
+ * --> 1
  *      --> 2
  *           -->3
  *               --> 1
@@ -87,7 +81,7 @@ import com.alibaba.otter.shared.etl.model.RowBatch;
  * c. ProcessTermin接受到termin信号
  *    i. 会严格按照发出去的batchId/processId进行对比，发现不匹配，发起rollback操作.
  *    ii. 会根据terminType判断这一批数据是否处理成功，如果发现不成功，发起rollback操作
- * 
+ *
  * 2. 异常调度流程
  * 假如并行度为3
  * |-->1 --> 2 -->3(ing)
@@ -95,36 +89,37 @@ import com.alibaba.otter.shared.etl.model.RowBatch;
  *    i. 如果2批次数据已经提交，等待2批次termin信号的返回，此时需要阻塞ProcessSelect，避免再取新数据
  *    ii. 如果第2批次数据未提交，直接rollback数据，不再进入s/e/t/l调度流程
  * b. 当所有批次都已经处理完成，再通知ProcessSelect启动 (注意：这里会避免rollback和get并发操作，会造成数据不一致)
- * 
+ *
  * 3. 热备机制
  * a. Select主线程会一直监听mainstem的信号，一旦抢占成功，则启动ProcessSelect/ProcessTermin线程
  * b. ProcessSelect/ProcessTermin在处理过程中，会检查一下当前节点是否为抢占mainstem成功的节点，如果发现不是，立马停止，继续监听mainstem
  * c. ProcessSelect进行get数据之前，会等到ProcessTermin会读取未被处理过termin信号，对上一次的selector进行ack/rollback处理
  *      i. 注意：ProcessSelect进行get数据时，需要保证batch/termin/get操作状态保持一致，必须都处于同一个数据点上
  * </pre>
- * 
+ *
  * @author jianghang 2012-7-31 下午05:39:06
  * @version 4.1.0
  */
 public class SelectTask extends GlobalTask {
 
     // 运行调度控制
-    private volatile boolean           isStart          = false;
+    private volatile boolean isStart = false;
     // 运行
-    private StatisticsClientService    statisticsClientService;
-    private OtterSelectorFactory       otterSelectorFactory;
+    private StatisticsClientService statisticsClientService;
+    private OtterSelectorFactory otterSelectorFactory;
     /**
      * 实际上这个selector就是canal包装器 所以才会有start等生命周期方法
      */
-    private OtterSelector<Message>     otterSelector;
-    private ExecutorService            executor;
-    private BlockingQueue<BatchTermin> batchBuffer      = new LinkedBlockingQueue<BatchTermin>(50); // 设置有界队列，避免小batch处理太多
-    private boolean                    needCheck        = false;
-    private BooleanMutex               canStartSelector = new BooleanMutex(false);                 // 非常轻量的一个阻塞式实现，调用成本低
-    private AtomicInteger              rversion         = new AtomicInteger(0);
-    private long                       lastResetTime    = new Date().getTime();
+    private OtterSelector<Message> otterSelector;
+    private ExecutorService executor;
+    // 存储了select处理的数据 在termin时候会判断是是回滚还是ack
+    private BlockingQueue<BatchTermin> batchBuffer = new LinkedBlockingQueue<BatchTermin>(50); // 设置有界队列，避免小batch处理太多
+    private boolean needCheck = false;
+    private BooleanMutex canStartSelector = new BooleanMutex(false);                 // 非常轻量的一个阻塞式实现，调用成本低
+    private AtomicInteger rversion = new AtomicInteger(0);
+    private long lastResetTime = new Date().getTime();
 
-    public SelectTask(Long pipelineId){
+    public SelectTask(Long pipelineId) {
         super(pipelineId);
     }
 
@@ -134,6 +129,7 @@ public class SelectTask extends GlobalTask {
             while (running) {
                 try {
                     if (isStart) {
+                        // startup获取成功后每次都要检测是不是自己抢占主线成功
                         boolean working = arbitrateEventService.mainStemEvent().check(pipelineId);
                         if (!working) {
                             stopup(false);
@@ -160,17 +156,20 @@ public class SelectTask extends GlobalTask {
                 }
             }
         } finally {
+            // 自己只需over则放弃抢占 等待其他抢占
             arbitrateEventService.mainStemEvent().release(pipelineId);
         }
     }
 
     /**
      * 尝试启动，需要进行mainstem竞争，拿到锁之后才可以进行下一步
-     * 
+     *
      * @throws InterruptedException
      */
     private void startup() throws InterruptedException {
         try {
+            // 抢占成功才会执行  否则只能等着  这也就是select的机制  核心  n个select线程去执行 但是只有一个select抢占成功
+            // 同时具备了热备功能 当某个select挂了 立马会有以一个新的select抢占
             arbitrateEventService.mainStemEvent().await(pipelineId);
         } catch (Throwable e) {
             if (isInterrupt(e)) {
@@ -189,7 +188,7 @@ public class SelectTask extends GlobalTask {
         otterSelector.start();
 
         canStartSelector.set(false);// 初始化为false
-        // 处理setl的load阶段返回的ack todo 确认这个翻译
+        //   处理结束信号。ack或者rollback。
         startProcessTermin();
         // 处理拉取mysql binlog
         startProcessSelect();
@@ -248,7 +247,7 @@ public class SelectTask extends GlobalTask {
                     checkContinueWork();
                 }
 
-                // 出现阻塞挂起时，等待mananger处理完成，解挂开启同步
+                // 出现阻塞挂起时，等待mananger处理完成，解挂开启同步 非定位中且channelstate = 启动
                 arbitrateEventService.toolEvent().waitForPermit(pipelineId);// 出现rollback后能及时停住
 
                 // 使用startVersion要解决的一个问题：出现rollback时，尽可能判断取出来的数据是rollback前还是rollback后，想办法丢弃rollback前的数据。
@@ -279,7 +278,8 @@ public class SelectTask extends GlobalTask {
                     batchBuffer.put(new BatchTermin(gotMessage.getId(), false));
                     continue;
                 }
-
+                // 获取下一个处理的节点id processid等 [todo 任新林 这里类似于滑动窗口并行度]
+                // 同时processId是自增的 SEDA模型 等待single到buffer中
                 final EtlEventData etlEventData = arbitrateEventService.selectEvent().await(pipelineId);
                 if (rversion.get() != startVersion) {// 说明存在过变化，中间出现过rollback，需要丢弃该数据
                     logger.warn("rollback happend , should skip this data and get new message.");
@@ -323,7 +323,7 @@ public class SelectTask extends GlobalTask {
                             for (EventData data : eventData) {
                                 rowBatch.merge(data);
                             }
-
+                            // todo next nid就是extract节点id nid经过了负载均衡处理
                             long nextNodeId = etlEventData.getNextNid();
                             List<PipeKey> pipeKeys = rowDataPipeDelegate.put(new DbBatch(rowBatch), nextNodeId);
                             etlEventData.setDesc(pipeKeys);
@@ -331,23 +331,26 @@ public class SelectTask extends GlobalTask {
                             etlEventData.setFirstTime(startTime); // 使用原始数据的第一条
                             etlEventData.setBatchId(message.getId());
 
+                            // 监控信息不用管
                             if (profiling) {
                                 Long profilingEndTime = System.currentTimeMillis();
                                 stageAggregationCollector.push(pipelineId,
-                                    StageType.SELECT,
-                                    new AggregationItem(profilingStartTime, profilingEndTime));
+                                        StageType.SELECT,
+                                        new AggregationItem(profilingStartTime, profilingEndTime));
                             }
+
+                            // 通知extract模块来处理这个数据 single通知那个 extract节点处理
                             arbitrateEventService.selectEvent().single(etlEventData);
                         } catch (Throwable e) {
                             if (!isInterrupt(e)) {
                                 logger.error(String.format("[%s] selectwork executor is error! data:%s",
-                                    pipelineId,
-                                    etlEventData), e);
+                                        pipelineId,
+                                        etlEventData), e);
                                 sendRollbackTermin(pipelineId, e);
                             } else {
                                 logger.info(String.format("[%s] selectwork executor is interrrupt! data:%s",
-                                    pipelineId,
-                                    etlEventData), e);
+                                        pipelineId,
+                                        etlEventData), e);
                             }
                         } finally {
                             Thread.currentThread().setName(currentName);
@@ -356,11 +359,11 @@ public class SelectTask extends GlobalTask {
                     }
                 };
 
-                // 构造pending任务，可在关闭线程时退出任务
+                // 构造pending任务，可在关闭线程时退出任务  这里滑动窗口的发送就已经允许异步发送了 可以不保障顺序
                 SetlFuture extractFuture = new SetlFuture(StageType.SELECT,
-                    etlEventData.getProcessId(),
-                    pendingFuture,
-                    task);
+                        etlEventData.getProcessId(),
+                        pendingFuture,
+                        task);
                 executorService.execute(extractFuture);
 
             } catch (Throwable e) {
@@ -465,12 +468,12 @@ public class SelectTask extends GlobalTask {
             if (terminBatchId == null && processId != -1L && !processId.equals(terminProcessId)) {
                 // 针对manager发起rollback，terminBatchId可能为null，需要特殊处理下
                 exception = new SelectException("unmatched processId, SelectTask batchId = " + batchId
-                                                + " processId = " + processId + " and Termin Event: "
-                                                + terminData.toString());
+                        + " processId = " + processId + " and Termin Event: "
+                        + terminData.toString());
                 Thread.sleep(1000); // sleep 1秒，等新的数据包
             } else if (terminBatchId != null && batchId != -1L && !batchId.equals(terminBatchId)) {
                 exception = new SelectException("unmatched terminId, SelectTask batchId = " + batchId + " processId = "
-                                                + processId + " and Termin Event: " + terminData.toString());
+                        + processId + " and Termin Event: " + terminData.toString());
                 Thread.sleep(1000); // sleep 1秒，等新的数据包
             } else {
                 exception = null; // batchId/processId对上了，退出
@@ -490,8 +493,8 @@ public class SelectTask extends GlobalTask {
         if (lastStatus == false && status == true) {
             // 上一批失败，这一批成功，说明调度有问题
             throw new SelectException(String.format("last status is rollback , but now [batchId:%d , processId:%d] is ack",
-                batchId,
-                terminData.getProcessId()));
+                    batchId,
+                    terminData.getProcessId()));
         }
 
         if (terminData.getType().isNormal()) {
@@ -546,21 +549,56 @@ public class SelectTask extends GlobalTask {
         }
     }
 
+    private void sendDelayStat(long pipelineId, Long endTime, Long startTime) {
+        DelayCount delayCount = new DelayCount();
+        delayCount.setPipelineId(pipelineId);
+        delayCount.setNumber(0L);// 不再统计delayNumber
+        if (startTime != null && endTime != null) {
+            delayCount.setTime(endTime - startTime);// 以后改造成获取数据库的sysdate/now()
+        }
+
+        statisticsClientService.sendResetDelayCount(delayCount);
+    }
+
+    private void sendDelayReset(long pipelineId) {
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastResetTime > 60 * 1000) {
+            // 60秒向manager推送一次配置
+            lastResetTime = currentTime;
+            DelayCount delayCount = new DelayCount();
+            delayCount.setPipelineId(pipelineId);
+            delayCount.setNumber(0L);
+            long delayTime = currentTime - otterSelector.lastEntryTime();
+            delayCount.setTime(delayTime);
+            statisticsClientService.sendResetDelayCount(delayCount);
+        }
+    }
+
+    public void setOtterSelectorFactory(OtterSelectorFactory otterSelectorFactory) {
+        this.otterSelectorFactory = otterSelectorFactory;
+    }
+
+    // ======================= setter / getter ===================
+
+    public void setStatisticsClientService(StatisticsClientService statisticsClientService) {
+        this.statisticsClientService = statisticsClientService;
+    }
+
     public static class BatchTermin {
 
-        private Long    batchId   = -1L;
-        private Long    processId = -1L;
-        private boolean needWait  = true;
+        private Long batchId = -1L;
+        private Long processId = -1L;
+        private boolean needWait = true;
 
-        public BatchTermin(Long batchId, Long processId){
+        public BatchTermin(Long batchId, Long processId) {
             this(batchId, processId, true);
         }
 
-        public BatchTermin(Long batchId, boolean needWait){
+        public BatchTermin(Long batchId, boolean needWait) {
             this(batchId, -1L, needWait);
         }
 
-        public BatchTermin(Long batchId, Long processId, boolean needWait){
+        public BatchTermin(Long batchId, Long processId, boolean needWait) {
             this.batchId = batchId;
             this.processId = processId;
             this.needWait = needWait;
@@ -595,41 +633,6 @@ public class SelectTask extends GlobalTask {
             return "BatchTermin [batchId=" + batchId + ", needWait=" + needWait + ", processId=" + processId + "]";
         }
 
-    }
-
-    private void sendDelayStat(long pipelineId, Long endTime, Long startTime) {
-        DelayCount delayCount = new DelayCount();
-        delayCount.setPipelineId(pipelineId);
-        delayCount.setNumber(0L);// 不再统计delayNumber
-        if (startTime != null && endTime != null) {
-            delayCount.setTime(endTime - startTime);// 以后改造成获取数据库的sysdate/now()
-        }
-
-        statisticsClientService.sendResetDelayCount(delayCount);
-    }
-
-    private void sendDelayReset(long pipelineId) {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastResetTime > 60 * 1000) {
-            // 60秒向manager推送一次配置
-            lastResetTime = currentTime;
-            DelayCount delayCount = new DelayCount();
-            delayCount.setPipelineId(pipelineId);
-            delayCount.setNumber(0L);
-            long delayTime = currentTime - otterSelector.lastEntryTime();
-            delayCount.setTime(delayTime);
-            statisticsClientService.sendResetDelayCount(delayCount);
-        }
-    }
-
-    // ======================= setter / getter ===================
-
-    public void setOtterSelectorFactory(OtterSelectorFactory otterSelectorFactory) {
-        this.otterSelectorFactory = otterSelectorFactory;
-    }
-
-    public void setStatisticsClientService(StatisticsClientService statisticsClientService) {
-        this.statisticsClientService = statisticsClientService;
     }
 
 }

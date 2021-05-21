@@ -49,6 +49,9 @@ import com.alibaba.otter.shared.common.utils.zookeeper.ZkClientx;
 import com.alibaba.otter.shared.common.utils.zookeeper.ZooKeeperx;
 
 /**
+ *
+ *
+ * 监控 /otter/channel/${channelId}/${pipelineId}/process
  * 所有process节点变化的监控
  * 
  * <pre>
@@ -96,6 +99,7 @@ public class StageMonitor extends ArbitrateLifeCycle implements Monitor {
         };
 
         String path = StagePathUtils.getProcessRoot(getPipelineId());
+        // path = /otter/channel/${channelId}/${pipelineId}/process
         List<String> childs = zookeeper.subscribeChildChanges(path, processListener);
         initStage(childs);
         // syncStage();
@@ -293,52 +297,7 @@ public class StageMonitor extends ArbitrateLifeCycle implements Monitor {
         }
     }
 
-    // /**
-    // * 监听process的新增/删除变化，触发process列表的更新
-    // */
-    // private void syncStage() {
-    // // 1. 根据pipelineId构造对应的path
-    // String path = null;
-    // try {
-    // path = StagePathUtils.getProcessRoot(getPipelineId());
-    // // 2. 监听当前的process列表的变化
-    // List<String> currentProcesses = zookeeper.getChildren(path, new AsyncWatcher() {
-    //
-    // public void asyncProcess(WatchedEvent event) {
-    // MDC.put(ArbitrateConstants.splitPipelineLogFileKey, String.valueOf(getPipelineId()));
-    // if (isStop()) {
-    // return;
-    // }
-    //
-    // // 出现session expired/connection losscase下，会触发所有的watcher响应，同时老的watcher会继续保留，所以会导致出现多次watcher响应
-    // boolean dataChanged = event.getType() == EventType.NodeDataChanged
-    // || event.getType() == EventType.NodeDeleted
-    // || event.getType() == EventType.NodeCreated
-    // || event.getType() == EventType.NodeChildrenChanged;
-    // if (dataChanged) {
-    // syncStage(); // 继续监听
-    // // initStage(); // 重新更新
-    // }
-    // }
-    // });
-    //
-    // // 3. 循环处理每个process
-    // List<Long> processIds = new ArrayList<Long>();
-    // for (String process : currentProcesses) {
-    // processIds.add(StagePathUtils.getProcessId(process));
-    // }
-    //
-    // Collections.sort(processIds); // 排序一下
-    // // 判断一下当前processIds和当前内存中的记录是否有差异，如果有差异立马触发一下
-    // if (!currentProcessIds.equals(processIds)) {
-    // initStage(); // 立马触发一下
-    // }
-    // } catch (KeeperException e) {
-    // syncStage(); // 继续监听
-    // } catch (InterruptedException e) {
-    // // ignore
-    // }
-    // }
+
 
     /**
      * 监听指定的processId节点的变化

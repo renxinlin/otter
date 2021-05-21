@@ -28,6 +28,7 @@ import com.alibaba.otter.shared.common.model.config.channel.ChannelStatus;
 
 /**
  * 主导线程信号控制
+ * 对于selectTask线程的控制
  * 
  * @author jianghang 2011-8-9 下午05:16:16
  */

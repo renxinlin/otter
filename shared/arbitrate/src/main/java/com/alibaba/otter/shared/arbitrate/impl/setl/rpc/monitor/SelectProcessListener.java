@@ -35,6 +35,7 @@ import com.alibaba.otter.shared.common.model.config.pipeline.PipelineParameter.A
 import com.alibaba.otter.shared.common.utils.JsonUtils;
 
 /**
+ * 注意这里只是处理process节点 不处理子节点
  * 监听process的变化，发现节点数<并行度，则添加一个可调度的process
  * 
  * @author jianghang 2012-9-28 下午10:00:22

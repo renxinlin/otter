@@ -42,12 +42,14 @@ public class PipelineParameter implements Serializable {
 
     private static final long     serialVersionUID           = 8112362911827913152L;
     private Long                  pipelineId;
+    // 滑动窗口大小 任新林
     private Long                  parallelism                = 3L;                          // 并行度
     private LoadBanlanceAlgorithm lbAlgorithm                = LoadBanlanceAlgorithm.Random; // 负载均衡算法
     private Boolean               home                       = false;                       // 是否为主站点
     private SelectorMode          selectorMode               = SelectorMode.Canal;          // 数据获取方式
     private String                destinationName;
     private Short                 mainstemClientId;                                         // mainstem订阅id
+    // 滑动窗口数据位大小  todo renxl 这里要搞清事务到底是依赖大小还是select的时候直接处理了事务
     private Integer               mainstemBatchsize          = 10000 * 10;                  // mainstem订阅批次大小
     private Integer               extractPoolSize            = 5;                           // extract模块载入线程数，针对单个载入通道
     private Integer               loadPoolSize               = 5;                           // load模块载入线程数，针对单个载入通道

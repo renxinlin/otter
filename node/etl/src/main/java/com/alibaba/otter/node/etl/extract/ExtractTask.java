@@ -68,6 +68,7 @@ public class ExtractTask extends GlobalTask {
                             pipeline = configClientService.findPipeline(pipelineId);
                             List<PipeKey> keys = (List<PipeKey>) etlEventData.getDesc();
                             long nextNodeId = etlEventData.getNextNid();
+                            // rpc调用select task存储的binlog事件
                             DbBatch dbBatch = rowDataPipeDelegate.get(keys);
 
                             // 可能拿到为null，因为内存不足或者网络异常，长时间阻塞时，导致从pipe拿数据出现异常，数据可能被上一个节点已经删除
@@ -75,7 +76,7 @@ public class ExtractTask extends GlobalTask {
                                 processMissData(pipelineId, "extract miss data with keys:" + keys.toString());
                                 return;
                             }
-
+                            // TODO [核心部分]
                             otterExtractorFactory.extract(dbBatch);// 重新装配一下数据
                             if (dbBatch.getFileBatch() != null
                                 && !CollectionUtils.isEmpty(dbBatch.getFileBatch().getFiles())
@@ -85,7 +86,7 @@ public class ExtractTask extends GlobalTask {
                                                                                             nextNodeId);
                                 dbBatch.setFileBatch(fileBatch);
                             }
-
+                            // 放进来等待transform拉取这个数据
                             List<PipeKey> pipeKeys = rowDataPipeDelegate.put(dbBatch, nextNodeId);
                             etlEventData.setDesc(pipeKeys);
 
@@ -95,6 +96,7 @@ public class ExtractTask extends GlobalTask {
                                                                StageType.EXTRACT,
                                                                new AggregationItem(profilingStartTime, profilingEndTime));
                             }
+                            // 发到transform节点
                             arbitrateEventService.extractEvent().single(etlEventData);
                         } catch (Throwable e) {
                             if (!isInterrupt(e)) {

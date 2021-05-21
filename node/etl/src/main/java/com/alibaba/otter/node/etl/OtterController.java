@@ -199,6 +199,7 @@ public class OtterController implements NodeTaskListener, OtterControllerMBean {
 
         if (task != null) {
             OtterContextLocator.autowire(task); // 注入一下spring资源
+            OtterContextLocator.autowire(task); // 注入一下spring资源
             task.start();
             // 处理controllers 里面的pipeline对应的task
             tasks.put(taskType, task);

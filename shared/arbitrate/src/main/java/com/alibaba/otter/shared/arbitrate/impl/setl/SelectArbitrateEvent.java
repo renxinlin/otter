@@ -29,5 +29,9 @@ public interface SelectArbitrateEvent extends ArbitrateEvent {
 
     public EtlEventData await(Long pipelineId) throws InterruptedException;
 
+    /**
+     * 传递下一个stage的信号 下一个stage会阻塞等待
+     * @param data
+     */
     public void single(EtlEventData data);
 }

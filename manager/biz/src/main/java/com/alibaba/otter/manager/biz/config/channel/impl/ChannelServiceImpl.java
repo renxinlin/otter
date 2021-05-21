@@ -16,6 +16,9 @@
 
 package com.alibaba.otter.manager.biz.config.channel.impl;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -441,6 +444,7 @@ public class ChannelServiceImpl implements ChannelService {
                     if (result) {
                         // 针对启动的话，需要先通知到客户端，客户端启动线程后，再更改channel状态
                         if (newStatus.isStart()) {
+                            // 启动成功更新 /otter/channel为启动状态 这里启动 代表授权permitselectTask工作
                             arbitrateManageService.channelEvent().start(channelId);
                         }
                     }
@@ -707,6 +711,21 @@ public class ChannelServiceImpl implements ChannelService {
 
     public void setSystemParameterService(SystemParameterService systemParameterService) {
         this.systemParameterService = systemParameterService;
+    }
+
+
+    public static void main(String[] args) {
+
+        InvocationHandler channelService = new InvocationHandler() {
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                System.out.println("===");
+                return null;
+            }
+        };
+        ChannelService o = (ChannelService) Proxy.newProxyInstance(ChannelService.class.getClassLoader(), ChannelServiceImpl.class.getInterfaces(), channelService);
+        o.findByIdWithoutColumn(12L);
+        System.out.println(12);
     }
 
 }

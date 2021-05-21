@@ -70,6 +70,7 @@ public class SelectZooKeeperArbitrateEvent implements SelectArbitrateEvent {
         permitMonitor.waitForPermit();// 阻塞等待授权
 
         SelectStageListener selectStageListener = ArbitrateFactory.getInstance(pipelineId, SelectStageListener.class);
+        // renxl：等待processId 滑动窗口并行度
         Long processId = selectStageListener.waitForProcess(); // 符合条件的processId
 
         ChannelStatus status = permitMonitor.getChannelPermit();
